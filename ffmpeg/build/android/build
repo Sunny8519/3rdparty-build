@@ -1,0 +1,123 @@
+#!/bin/bash -e
+
+###########################################################
+
+DIR_HERE=$(cd $(dirname $0) && pwd)
+#. $DIR_HERE/ndk.pth
+
+# ffmpeg 解压源代码的压缩包到ffmpeg/src
+DIR_EXTERNALS=$DIR_HERE/../../src
+DIR_OBJ_ROOT=$DIR_HERE/obj
+
+rm -fr $DIR_OBJ_ROOT
+
+mkdir -p $DIR_EXTERNALS
+mkdir -p $DIR_OBJ_ROOT
+
+FFMPEG_VERSION='3.3'
+FFMPEG_URL="ffmpeg.org/releases/ffmpeg-$FFMPEG_VERSION.tar.bz2"
+FFMPEG_ARC_NAME=$(basename $FFMPEG_URL)
+
+SRC_DIR=$DIR_EXTERNALS/"ffmpeg-$FFMPEG_VERSION"
+OBJ_DIR=$DIR_OBJ_ROOT/"ffmpeg-$FFMPEG_VERSION"
+
+rm -rf $SRC_DIR
+
+if [ ! -d $SRC_DIR ]; then
+    if [ ! -f "$DIR_EXTERNALS/$FFMPEG_ARC_NAME" ]; then
+        curl -L -o "$DIR_EXTERNALS/$FFMPEG_ARC_NAME" $FFMPEG_URL
+    fi
+    mkdir -p $SRC_DIR
+    tar xvf "$DIR_EXTERNALS/$FFMPEG_ARC_NAME" --strip-components=1 -C $SRC_DIR
+fi
+
+
+# x264 解压源代码的压缩包到x264/src
+X264_SNAPSHOT=$DIR_HERE/../../../x264/src
+rm -rf $X264_SNAPSHOT
+mkdir -p $X264_SNAPSHOT
+tar xvf "$DIR_HERE/../../../x264/externals/20170531-2245-x264.tar.bz2" --strip-components=1 -C $X264_SNAPSHOT
+
+echo '###########################################################'
+
+BUILD_TARGETS=(armeabi-v7a arm64-v8a)
+
+BUILD_PATH=$DIR_OBJ_ROOT
+
+#for var in ${BUILD_TARGETS}; do 就两种所以就直接用函数调用2次就行了
+function build_libs
+{
+# 参数1是架构armeabi-v7a或者arm64-v8a，由下面调用函数的地方传进来
+local var=$1
+
+# 清理ffmpeg/build/android/obj目录
+echo "Delete invalid files ..."
+rm -fr $BUILD_PATH
+mkdir -p $BUILD_PATH
+echo "Delete invalid files finish."
+
+# 把一系列文件复制到ffmpeg/build/android/obj目录下
+echo "Build $var start ..."
+! [ -f $BUILD_PATH/build_ffmpeg.sh ] && cp $DIR_HERE/package/build_ffmpeg.sh $BUILD_PATH/build_ffmpeg.sh
+! [ -f $BUILD_PATH/build_x264.sh ] && cp $DIR_HERE/package/build_x264.sh $BUILD_PATH/build_x264.sh
+! [ -f $BUILD_PATH/Makefile ] && cp $DIR_HERE/package/Makefile $BUILD_PATH/Makefile
+! [ -d $BUILD_PATH/ffmpeg_src ] && cp -r $SRC_DIR $BUILD_PATH/ffmpeg_src
+! [ -d $BUILD_PATH/x264_src ] && cp -r $DIR_HERE/../../../x264/src $BUILD_PATH/x264_src
+
+chmod a+x $BUILD_PATH/ffmpeg_src/version.sh \
+	$BUILD_PATH/ffmpeg_src/configure \
+	$BUILD_PATH/x264_src/version.sh \
+	$BUILD_PATH/x264_src/configure \
+	$BUILD_PATH/x264_src/config.guess \
+	$BUILD_PATH/x264_src/config.sub \
+	$BUILD_PATH/build_ffmpeg.sh \
+	$BUILD_PATH/build_x264.sh
+echo "Build $var finish."
+
+
+echo "Make $var start ..."
+cd $BUILD_PATH
+# 调用子Makefile进行相关清理
+make -f $BUILD_PATH/Makefile clean
+# 调用子Makefile进行编译，调用build_x264.sh build_ffmpeg.sh
+make -f $BUILD_PATH/Makefile all T=$var
+echo "Make $var finish."
+
+
+echo "Install $var files ..."
+# 把编译的库和头文件复制到指定的位置上
+make -f $BUILD_PATH/Makefile install T=$var
+echo "Install $var files finish."
+}
+
+#done
+
+# 编译32位
+build_libs armeabi-v7a
+
+rm -fr $DIR_HERE/cmd_src/armeabi-v7a/
+mkdir -p $DIR_HERE/cmd_src/armeabi-v7a/
+cp $BUILD_PATH/ffmpeg_src/config.h $DIR_HERE/cmd_src/armeabi-v7a/
+cp $BUILD_PATH/ffmpeg_src/cmdutils.c $DIR_HERE/cmd_src/armeabi-v7a/
+cp $BUILD_PATH/ffmpeg_src/cmdutils.h $DIR_HERE/cmd_src/armeabi-v7a/
+cp $BUILD_PATH/ffmpeg_src/ffmpeg_filter.c $DIR_HERE/cmd_src/armeabi-v7a/
+cp $BUILD_PATH/ffmpeg_src/ffmpeg_opt.c $DIR_HERE/cmd_src/armeabi-v7a/
+cp $BUILD_PATH/ffmpeg_src/ffmpeg.c $DIR_HERE/cmd_src/armeabi-v7a/
+cp $BUILD_PATH/ffmpeg_src/ffmpeg.h $DIR_HERE/cmd_src/armeabi-v7a/
+
+# 编译64位
+build_libs arm64-v8a
+rm -fr $DIR_HERE/cmd_src/arm64-v8a/
+mkdir -p $DIR_HERE/cmd_src/arm64-v8a/
+cp $BUILD_PATH/ffmpeg_src/config.h $DIR_HERE/cmd_src/arm64-v8a/
+# 为什么64位拷贝一个，32位拷贝那么多呢？
+
+rm -rf $SRC_DIR
+rm -rf $DIR_HERE/../../../x264/src
+
+echo "Clean src files ..."
+
+
+#rm -fr $SRC_DIR
+#rm -fr $DIR_OBJ_ROOT
+echo "Clean src files done."

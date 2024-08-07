@@ -1,0 +1,11 @@
+prefix=/e/cosouly/workspace/ffmpeg_need/ffmpeg_x264_autobuild/ffmpeg_x264_android/build/x264/armeabi-v7a
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: x264
+Description: H.264 (MPEG4 AVC) encoder library
+Version: 0.129.x
+Libs: -L${exec_prefix}/lib -lx264
+Libs.private:  -lm
+Cflags: -I${prefix}/include

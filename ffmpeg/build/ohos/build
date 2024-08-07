@@ -1,0 +1,60 @@
+#!/bin/bash
+
+DIR_HERE=$(cd $(dirname $0) && pwd)
+
+DIR_OBJ_ROOT=$DIR_HERE/obj
+rm -fr $DIR_OBJ_ROOT
+mkdir -p $DIR_OBJ_ROOT
+
+# x264 解压源代码的压缩包到x264/src
+X264_SNAPSHOT=$DIR_HERE/../../../x264/src
+rm -rf $X264_SNAPSHOT
+mkdir -p $X264_SNAPSHOT
+tar xvf "$DIR_HERE/../../../x264/externals/20170531-2245-x264.tar.bz2" --strip-components=1 -C $X264_SNAPSHOT
+
+echo '###########################################################'
+
+BUILD_PATH=$DIR_OBJ_ROOT
+
+#for var in ${BUILD_TARGETS}; do 就两种所以就直接用函数调用2次就行了
+function build_libs
+{
+# 参数1是架构armeabi-v7a或者arm64-v8a，由下面调用函数的地方传进来
+local var=$1
+
+# 清理ffmpeg/build/android/obj目录
+echo "Delete invalid files ..."
+rm -fr $BUILD_PATH
+mkdir -p $BUILD_PATH
+echo "Delete invalid files finish."
+
+# 把一系列文件复制到ffmpeg/build/android/obj目录下
+echo "Build $var start ..."
+! [ -f $BUILD_PATH/build_x264.sh ] && cp $DIR_HERE/package/build_x264.sh $BUILD_PATH/build_x264.sh
+! [ -f $BUILD_PATH/Makefile ] && cp $DIR_HERE/package/Makefile $BUILD_PATH/Makefile
+! [ -d $BUILD_PATH/x264_src ] && cp -r $DIR_HERE/../../../x264/src $BUILD_PATH/x264_src
+
+chmod a+x $BUILD_PATH/x264_src/version.sh \
+	$BUILD_PATH/x264_src/configure \
+	$BUILD_PATH/x264_src/config.guess \
+	$BUILD_PATH/x264_src/config.sub \
+	$BUILD_PATH/build_x264.sh
+echo "Build $var finish."
+
+echo "Make $var start ..."
+cd $BUILD_PATH
+# 调用子Makefile进行相关清理
+make -f $BUILD_PATH/Makefile clean
+# 调用子Makefile进行编译，调用build_x264.sh build_ffmpeg.sh
+make -f $BUILD_PATH/Makefile all T=$var
+echo "Make $var finish."
+
+echo "Install $var files ..."
+# 把编译的库和头文件复制到指定的位置上
+make -f $BUILD_PATH/Makefile install T=$var
+echo "Install $var files finish."
+}
+
+build_libs arm64-v8a
+
+#rm -rf $DIR_HERE/../../../x264/src
